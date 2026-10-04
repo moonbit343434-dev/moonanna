@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../game/level_manager.dart';
@@ -12,18 +13,18 @@ class PowerUpBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<GameState>();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: GameColors.boardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: GameColors.primary.withOpacity(0.2)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: GameColors.primary.withOpacity(0.15)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: PowerUpType.values.map((type) {
           final count = state.powerUps[type] ?? 0;
           final active = state.activePowerUp == type;
-          return _PowerUpButton(
+          return _PowerUpBtn(
             type: type,
             count: count,
             isActive: active,
@@ -43,7 +44,6 @@ class PowerUpBar extends StatelessWidget {
       levelManager.useFullMoonBoost(state);
       return;
     }
-    // Требуют выбора клетки
     if (state.activePowerUp == type) {
       state.activePowerUp = null;
       state.powerUpSelectMode = false;
@@ -55,13 +55,13 @@ class PowerUpBar extends StatelessWidget {
   }
 }
 
-class _PowerUpButton extends StatelessWidget {
+class _PowerUpBtn extends StatelessWidget {
   final PowerUpType type;
   final int count;
   final bool isActive;
   final VoidCallback? onTap;
 
-  const _PowerUpButton({
+  const _PowerUpBtn({
     required this.type,
     required this.count,
     required this.isActive,
@@ -70,33 +70,47 @@ class _PowerUpButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final enabled = count > 0;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(6),
+        duration: const Duration(milliseconds: 180),
+        width: 56,
+        height: 64,
         decoration: BoxDecoration(
           color: isActive
-              ? GameColors.primary.withOpacity(0.3)
-              : GameColors.cellBg,
-          borderRadius: BorderRadius.circular(12),
+              ? GameColors.primary.withOpacity(0.25)
+              : enabled
+                  ? GameColors.cellBg
+                  : GameColors.background,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isActive ? GameColors.primary : GameColors.primary.withOpacity(0.2),
+            color: isActive
+                ? GameColors.primary
+                : enabled
+                    ? GameColors.primary.withOpacity(0.25)
+                    : GameColors.textHint.withOpacity(0.15),
             width: isActive ? 2 : 1,
           ),
           boxShadow: isActive
-              ? [BoxShadow(color: GameColors.primary.withOpacity(0.4), blurRadius: 8)]
+              ? [BoxShadow(color: GameColors.primary.withOpacity(0.4), blurRadius: 12)]
               : [],
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(type.emoji, style: const TextStyle(fontSize: 20)),
-            const SizedBox(height: 2),
+            Text(
+              type.emoji,
+              style: TextStyle(
+                fontSize: 22,
+                color: enabled ? null : Colors.white.withOpacity(0.3),
+              ),
+            ),
+            const SizedBox(height: 3),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
               decoration: BoxDecoration(
-                color: count > 0 ? GameColors.primary : Colors.grey.shade700,
+                color: enabled ? GameColors.primary : GameColors.textHint.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
@@ -110,7 +124,15 @@ class _PowerUpButton extends StatelessWidget {
             ),
           ],
         ),
-      ),
+      )
+          .animate(
+            target: isActive ? 1 : 0,
+          )
+          .scale(
+            begin: const Offset(1, 1),
+            end: const Offset(1.1, 1.1),
+            duration: 150.ms,
+          ),
     );
   }
 }

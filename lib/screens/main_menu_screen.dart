@@ -16,195 +16,227 @@ class MainMenuScreen extends StatefulWidget {
 }
 
 class _MainMenuScreenState extends State<MainMenuScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _moonController;
+    with TickerProviderStateMixin {
+  late AnimationController _moonCtrl;
+  late AnimationController _glowCtrl;
   late Animation<double> _moonFloat;
+  late Animation<double> _glowPulse;
 
   @override
   void initState() {
     super.initState();
-    _moonController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat(reverse: true);
-    _moonFloat = Tween<double>(begin: -8, end: 8).animate(
-      CurvedAnimation(parent: _moonController, curve: Curves.easeInOut),
+    _moonCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 3))
+      ..repeat(reverse: true);
+    _glowCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
+      ..repeat(reverse: true);
+    _moonFloat = Tween<double>(begin: -10, end: 10).animate(
+      CurvedAnimation(parent: _moonCtrl, curve: Curves.easeInOut),
+    );
+    _glowPulse = Tween<double>(begin: 0.5, end: 1.0).animate(
+      CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut),
     );
   }
 
   @override
   void dispose() {
-    _moonController.dispose();
+    _moonCtrl.dispose();
+    _glowCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final progress = widget.progress;
     return Scaffold(
       backgroundColor: GameColors.background,
       body: Stack(
         children: [
-          // Starfield
-          CustomPaint(painter: _MenuStarPainter(), child: const SizedBox.expand()),
+          // Stars
+          ...List.generate(18, (i) => _buildStar(context, i)),
           // Content
           SafeArea(
             child: SingleChildScrollView(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   children: [
-                    const SizedBox(height: 20),
-                    // Currency bar
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        _badge('🪙', '${progress.coins}', GameColors.gold),
-                        const SizedBox(width: 8),
-                        _badge('💎', '${progress.crystals}', GameColors.accent),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    // Top currency bar
+                    _buildCurrencyBar(),
+                    const SizedBox(height: 30),
                     // Floating moon
                     AnimatedBuilder(
-                      animation: _moonFloat,
+                      animation: _moonCtrl,
                       builder: (_, __) => Transform.translate(
                         offset: Offset(0, _moonFloat.value),
-                        child: Container(
-                          width: 110,
-                          height: 110,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const RadialGradient(
-                              colors: [
-                                GameColors.fullMoon,
-                                GameColors.primary,
+                        child: AnimatedBuilder(
+                          animation: _glowCtrl,
+                          builder: (_, __) => Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const RadialGradient(
+                                colors: [
+                                  GameColors.fullMoon,
+                                  GameColors.primary,
+                                  Color(0xFF2A0080),
+                                ],
+                                stops: [0.0, 0.55, 1.0],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: GameColors.primary.withOpacity(_glowPulse.value),
+                                  blurRadius: 60,
+                                  spreadRadius: 10,
+                                ),
+                                BoxShadow(
+                                  color: GameColors.accent.withOpacity(_glowPulse.value * 0.4),
+                                  blurRadius: 30,
+                                  spreadRadius: 5,
+                                ),
                               ],
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: GameColors.primary.withOpacity(0.5),
-                                blurRadius: 40,
-                                spreadRadius: 6,
-                              ),
-                            ],
-                          ),
-                          child: const Center(
-                            child: Text('🌕', style: TextStyle(fontSize: 56)),
+                            child: const Center(
+                              child: Text('🌕', style: TextStyle(fontSize: 60)),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 28),
                     // Title
-                    const Text(
-                      'MOON MERGE',
-                      style: TextStyle(
-                        color: GameColors.textPrimary,
-                        fontSize: 34,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 4,
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [
+                          GameColors.accent,
+                          GameColors.primaryLight,
+                          GameColors.fullMoon,
+                        ],
+                      ).createShader(bounds),
+                      child: const Text(
+                        'MOON MERGE',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 38,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 5,
+                        ),
                       ),
                     )
                         .animate()
-                        .fadeIn(duration: 600.ms)
-                        .shimmer(
-                          delay: 800.ms,
-                          duration: 2000.ms,
-                          color: GameColors.fullMoon.withOpacity(0.6),
-                        ),
+                        .fadeIn(duration: 700.ms)
+                        .slideY(begin: 0.3, curve: Curves.easeOutCubic),
                     const SizedBox(height: 6),
                     const Text(
                       'Match the Moon. Change the Gravity.',
                       style: TextStyle(
                         color: GameColors.textSecondary,
                         fontSize: 12,
-                        letterSpacing: 1,
+                        letterSpacing: 2,
+                      ),
+                    ).animate(delay: 200.ms).fadeIn(duration: 500.ms),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: GameColors.primary.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: GameColors.primary.withOpacity(0.4)),
+                      ),
+                      child: Text(
+                        'Level ${widget.progress.currentLevel}',
+                        style: const TextStyle(
+                          color: GameColors.primaryLight,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          letterSpacing: 1,
+                        ),
                       ),
                     ).animate(delay: 300.ms).fadeIn(duration: 500.ms),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Level ${progress.currentLevel}',
-                      style: const TextStyle(
-                        color: GameColors.accent,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(height: 40),
+                    // Buttons
+                    _menuBtn(
+                      icon: '▶',
+                      label: 'PLAY',
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF7C4DFF), Color(0xFF40C4FF)],
                       ),
-                    ).animate(delay: 500.ms).fadeIn(duration: 500.ms),
-                    const SizedBox(height: 36),
-                    // PLAY button
-                    _menuButton(
-                      context,
-                      '▶  PLAY',
-                      GameColors.primary,
                       large: true,
                       delay: 0,
-                      onTap: () => Navigator.push(
+                      onTap: () => _navigate(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => GameScreen(
-                            levelId: progress.currentLevel.clamp(1, 30),
-                            progress: progress,
-                          ),
+                        GameScreen(
+                          levelId: widget.progress.currentLevel.clamp(1, 30),
+                          progress: widget.progress,
                         ),
-                      ).then((_) => setState(() {})),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                          child: _menuButton(
-                            context,
-                            '🗺  MAP',
-                            GameColors.accent,
-                            delay: 100,
-                            onTap: () => Navigator.push(
+                          child: _menuBtn(
+                            icon: '🗺',
+                            label: 'MAP',
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF0077B6), Color(0xFF00B4D8)],
+                            ),
+                            delay: 80,
+                            onTap: () => _navigate(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => MapScreen(progress: progress),
-                              ),
-                            ).then((_) => setState(() {})),
+                              MapScreen(progress: widget.progress),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: _menuButton(
-                            context,
-                            '📅  DAILY',
-                            const Color(0xFF4CAF50),
-                            delay: 150,
-                            onTap: () => Navigator.push(
+                          child: _menuBtn(
+                            icon: '📅',
+                            label: 'DAILY',
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1B5E20), Color(0xFF43A047)],
+                            ),
+                            delay: 120,
+                            onTap: () => _navigate(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => DailyScreen(progress: progress),
-                              ),
-                            ).then((_) => setState(() {})),
+                              DailyScreen(progress: widget.progress),
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    _menuButton(
-                      context,
-                      '🛒  SHOP',
-                      const Color(0xFF795548),
-                      delay: 200,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ShopScreen(progress: progress),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _menuBtn(
+                            icon: '🛒',
+                            label: 'SHOP',
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF4E342E), Color(0xFF8D6E63)],
+                            ),
+                            delay: 160,
+                            onTap: () => _navigate(
+                              context,
+                              ShopScreen(progress: widget.progress),
+                            ),
+                          ),
                         ),
-                      ).then((_) => setState(() {})),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _menuBtn(
+                            icon: '⚙️',
+                            label: 'SETTINGS',
+                            gradient: LinearGradient(
+                              colors: [Colors.grey.shade800, Colors.grey.shade700],
+                            ),
+                            delay: 200,
+                            onTap: () => _showSettings(),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    _menuButton(
-                      context,
-                      '⚙️  SETTINGS',
-                      Colors.grey.shade700,
-                      delay: 250,
-                      onTap: () => _showSettings(context),
-                    ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 40),
                   ],
                 ),
               ),
@@ -215,145 +247,167 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     );
   }
 
-  Widget _badge(String icon, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
+  void _navigate(BuildContext context, Widget screen) {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, a, __) => screen,
+        transitionsBuilder: (_, a, __, child) =>
+            FadeTransition(opacity: a, child: child),
+        transitionDuration: const Duration(milliseconds: 400),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(icon, style: const TextStyle(fontSize: 14)),
-          const SizedBox(width: 5),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
+    ).then((_) => setState(() {}));
+  }
+
+  Widget _buildCurrencyBar() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        _badge('🪙', '${widget.progress.coins}', GameColors.gold),
+        const SizedBox(width: 8),
+        _badge('💎', '${widget.progress.crystals}', GameColors.accent),
+      ],
     );
   }
 
-  Widget _menuButton(
-    BuildContext ctx,
-    String label,
-    Color color, {
-    bool large = false,
-    required int delay,
-    required VoidCallback onTap,
-  }) {
-    return ElevatedButton(
-      onPressed: onTap,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        minimumSize: Size(double.infinity, large ? 58 : 48),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(large ? 18 : 14),
-        ),
-        elevation: large ? 8 : 4,
+  Widget _badge(String icon, String val, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.35)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: large ? 18 : 15,
-          letterSpacing: 1,
-        ),
-      ),
-    )
-        .animate(delay: Duration(milliseconds: 600 + delay))
-        .fadeIn(duration: 400.ms)
-        .slideY(begin: 0.3);
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(icon, style: const TextStyle(fontSize: 14)),
+        const SizedBox(width: 5),
+        Text(val, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14)),
+      ]),
+    );
   }
 
-  void _showSettings(BuildContext ctx) {
-    showDialog(
-      context: ctx,
-      builder: (dctx) => Dialog(
-        backgroundColor: GameColors.boardBg,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
+  Widget _menuBtn({
+    required String icon,
+    required String label,
+    required Gradient gradient,
+    required VoidCallback onTap,
+    required int delay,
+    bool large = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        height: large ? 62 : 52,
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: (gradient as LinearGradient).colors.first.withOpacity(0.4),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                '⚙️ SETTINGS',
+              Text(icon, style: TextStyle(fontSize: large ? 22 : 18)),
+              const SizedBox(width: 8),
+              Text(
+                label,
                 style: TextStyle(
-                  color: GameColors.textPrimary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
-                ),
-              ),
-              const SizedBox(height: 20),
-              _settingRow('🔊 Sound', widget.progress.soundEnabled, (v) {
-                setState(() => widget.progress.soundEnabled = v);
-              }),
-              const SizedBox(height: 10),
-              _settingRow('🎵 Music', widget.progress.musicEnabled, (v) {
-                setState(() => widget.progress.musicEnabled = v);
-              }),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () => Navigator.pop(dctx),
-                child: const Text(
-                  'Close',
-                  style: TextStyle(color: GameColors.accent),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: large ? 18 : 15,
+                  letterSpacing: 1.5,
                 ),
               ),
             ],
           ),
         ),
       ),
+    )
+        .animate(delay: Duration(milliseconds: 500 + delay))
+        .fadeIn(duration: 400.ms)
+        .slideY(begin: 0.3, curve: Curves.easeOutCubic);
+  }
+
+  Widget _buildStar(BuildContext context, int i) {
+    final positions = [
+      [0.05, 0.08], [0.15, 0.22], [0.88, 0.06], [0.82, 0.28],
+      [0.5, 0.04],  [0.68, 0.14], [0.3, 0.02],  [0.95, 0.45],
+      [0.02, 0.6],  [0.12, 0.82], [0.87, 0.72], [0.44, 0.92],
+      [0.6, 0.52],  [0.22, 0.42], [0.76, 0.88], [0.37, 0.65],
+      [0.55, 0.78], [0.08, 0.35],
+    ];
+    final p = positions[i % positions.length];
+    final sz = MediaQuery.of(context).size;
+    return Positioned(
+      left: sz.width * p[0],
+      top: sz.height * p[1],
+      child: Container(
+        width: 2, height: 2,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white54,
+        ),
+      )
+          .animate(
+            delay: Duration(milliseconds: i * 180),
+            onPlay: (c) => c.repeat(reverse: true),
+          )
+          .fadeIn(duration: 700.ms)
+          .then()
+          .fadeOut(duration: 700.ms),
     );
   }
 
-  Widget _settingRow(String label, bool value, ValueChanged<bool> onChanged) {
+  void _showSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: GameColors.cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(
+              color: GameColors.textHint,
+              borderRadius: BorderRadius.circular(2),
+            )),
+            const SizedBox(height: 20),
+            const Text('⚙️  SETTINGS', style: TextStyle(
+              color: GameColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2,
+            )),
+            const SizedBox(height: 24),
+            _settingRow('🔊  Sound Effects', widget.progress.soundEnabled,
+                (v) => setState(() => widget.progress.soundEnabled = v)),
+            const SizedBox(height: 12),
+            _settingRow('🎵  Music', widget.progress.musicEnabled,
+                (v) => setState(() => widget.progress.musicEnabled = v)),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _settingRow(String label, bool val, ValueChanged<bool> onChange) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label,
-            style: const TextStyle(
-                color: GameColors.textPrimary, fontSize: 15)),
-        Switch(
-          value: value,
-          onChanged: onChanged,
-          activeColor: GameColors.primary,
-        ),
+        Text(label, style: const TextStyle(color: GameColors.textPrimary, fontSize: 15)),
+        Switch(value: val, onChanged: onChange, activeColor: GameColors.primary),
       ],
     );
   }
-}
-
-class _MenuStarPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withOpacity(0.35);
-    const stars = [
-      [0.05, 0.07], [0.18, 0.15], [0.9, 0.04], [0.83, 0.22],
-      [0.5, 0.03], [0.68, 0.12], [0.32, 0.01], [0.95, 0.45],
-      [0.02, 0.55], [0.12, 0.82], [0.87, 0.72], [0.44, 0.92],
-      [0.6, 0.5], [0.22, 0.4], [0.76, 0.88], [0.37, 0.65],
-      [0.55, 0.78], [0.08, 0.35], [0.92, 0.6], [0.48, 0.18],
-    ];
-    for (final s in stars) {
-      canvas.drawCircle(
-        Offset(size.width * s[0], size.height * s[1]),
-        1.5,
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
 }

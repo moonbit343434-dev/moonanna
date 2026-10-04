@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../models/game_state.dart';
-import '../models/level_config.dart';
 import '../models/player_progress.dart';
 import '../game/level_manager.dart';
 import '../data/levels_data.dart';
@@ -16,97 +16,108 @@ import 'level_complete_screen.dart';
 class GameScreen extends StatefulWidget {
   final int levelId;
   final PlayerProgress progress;
-
   const GameScreen({super.key, required this.levelId, required this.progress});
 
   @override
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> {
-  late GameState _gameState;
-  late LevelManager _levelManager;
+class _GameScreenState extends State<GameScreen>
+    with SingleTickerProviderStateMixin {
+  late GameState _state;
+  late LevelManager _manager;
   late PlayerProgress _progress;
+  late AnimationController _shakeCtrl;
+  late Animation<double> _shakeAnim;
   bool _resultShown = false;
 
   @override
   void initState() {
     super.initState();
-    _gameState = GameState();
-    _levelManager = LevelManager();
+    _state = GameState();
+    _manager = LevelManager();
     _progress = widget.progress;
 
-    final config = levels.firstWhere((l) => l.id == widget.levelId);
-    _levelManager.startLevel(_gameState, config, _progress);
+    _shakeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _shakeAnim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _shakeCtrl, curve: Curves.elasticOut),
+    );
 
-    _gameState.addListener(_onStateChange);
+    final cfg = levels.firstWhere((l) => l.id == widget.levelId);
+    _manager.startLevel(_state, cfg, _progress);
+    _state.addListener(_onStateChange);
   }
 
   @override
   void dispose() {
-    _gameState.removeListener(_onStateChange);
+    _state.removeListener(_onStateChange);
+    _shakeCtrl.dispose();
     super.dispose();
   }
 
   void _onStateChange() {
     if (!_resultShown &&
-        (_gameState.status == GameStatus.won ||
-            _gameState.status == GameStatus.lost)) {
+        (_state.status == GameStatus.won || _state.status == GameStatus.lost)) {
       _resultShown = true;
-      Future.delayed(const Duration(milliseconds: 600), _showResult);
+      if (_state.status == GameStatus.won) {
+        HapticFeedback.heavyImpact();
+        _shakeCtrl.forward();
+      } else {
+        HapticFeedback.mediumImpact();
+      }
+      Future.delayed(const Duration(milliseconds: 700), _showResult);
     }
   }
 
   void _showResult() {
     if (!mounted) return;
-    final won = _gameState.status == GameStatus.won;
-    final stars = won ? _levelManager.calculateStars(_gameState) : 0;
-
+    final won = _state.status == GameStatus.won;
+    final stars = won ? _manager.calculateStars(_state) : 0;
     if (won) {
-      final coinsEarned = [20, 50, 100][stars.clamp(1, 3) - 1];
-      _progress.completeLevel(widget.levelId, stars, _gameState.score);
-      _progress.coins += coinsEarned;
-      _progress.powerUps['moonHammer'] =
-          _gameState.powerUps[PowerUpType.moonHammer] ?? 0;
-      _progress.powerUps['comet'] =
-          _gameState.powerUps[PowerUpType.comet] ?? 0;
-      _progress.powerUps['gravitySwitch'] =
-          _gameState.powerUps[PowerUpType.gravitySwitch] ?? 0;
-      _progress.powerUps['fullMoonBoost'] =
-          _gameState.powerUps[PowerUpType.fullMoonBoost] ?? 0;
-      _progress.powerUps['starRay'] =
-          _gameState.powerUps[PowerUpType.starRay] ?? 0;
+      final coins = [20, 50, 100][(stars.clamp(1, 3) - 1)];
+      _progress.completeLevel(widget.levelId, stars, _state.score);
+      _progress.coins += coins;
+      _progress.powerUps['moonHammer']    = _state.powerUps[PowerUpType.moonHammer] ?? 0;
+      _progress.powerUps['comet']         = _state.powerUps[PowerUpType.comet] ?? 0;
+      _progress.powerUps['gravitySwitch'] = _state.powerUps[PowerUpType.gravitySwitch] ?? 0;
+      _progress.powerUps['fullMoonBoost'] = _state.powerUps[PowerUpType.fullMoonBoost] ?? 0;
+      _progress.powerUps['starRay']       = _state.powerUps[PowerUpType.starRay] ?? 0;
       SaveService().save(_progress);
     }
-
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => LevelCompleteScreen(
-          won: won,
-          stars: stars,
-          score: _gameState.score,
-          levelId: widget.levelId,
-          progress: _progress,
+      PageRouteBuilder(
+        pageBuilder: (_, a, __) => LevelCompleteScreen(
+          won: won, stars: stars, score: _state.score,
+          levelId: widget.levelId, progress: _progress,
         ),
+        transitionsBuilder: (_, a, __, child) =>
+            FadeTransition(opacity: a, child: child),
+        transitionDuration: const Duration(milliseconds: 500),
       ),
     );
   }
 
   void _onPause() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.7),
-      builder: (ctx) => _PauseDialog(
-        onResume: () => Navigator.pop(ctx),
-        onQuit: () {
-          Navigator.pop(ctx);
-          Navigator.pop(context);
-        },
+      backgroundColor: GameColors.cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _PauseSheet(
+        onResume: () => Navigator.pop(context),
         onRestart: () {
-          Navigator.pop(ctx);
+          Navigator.pop(context);
           _resultShown = false;
-          final config = levels.firstWhere((l) => l.id == widget.levelId);
-          _levelManager.startLevel(_gameState, config, _progress);
+          final cfg = levels.firstWhere((l) => l.id == widget.levelId);
+          _manager.startLevel(_state, cfg, _progress);
+        },
+        onQuit: () {
+          Navigator.pop(context);
+          Navigator.pop(context);
         },
       ),
     );
@@ -115,228 +126,250 @@ class _GameScreenState extends State<GameScreen> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<GameState>.value(
-      value: _gameState,
+      value: _state,
       child: Scaffold(
         backgroundColor: GameColors.background,
         body: SafeArea(
           child: Stack(
             children: [
-              _buildStarfield(),
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  children: [
-                    TopBarWidget(onPause: _onPause),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: Center(
-                        child: GameBoardWidget(levelManager: _levelManager),
+              // Starfield bg
+              const _Starfield(),
+              // Main content
+              AnimatedBuilder(
+                animation: _shakeAnim,
+                builder: (_, child) => Transform.translate(
+                  offset: Offset(
+                    _shakeCtrl.isAnimating
+                        ? ((_shakeAnim.value * 8) * ((_shakeAnim.value * 10).toInt().isEven ? 1 : -1))
+                        : 0,
+                    0,
+                  ),
+                  child: child,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    children: [
+                      TopBarWidget(onPause: _onPause),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: Center(
+                          child: GameBoardWidget(levelManager: _manager),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    PowerUpBar(levelManager: _levelManager),
-                    const SizedBox(height: 4),
-                  ],
+                      const SizedBox(height: 8),
+                      PowerUpBar(levelManager: _manager),
+                      const SizedBox(height: 4),
+                    ],
+                  ),
                 ),
               ),
-              // Gravity warning overlay
+              // Boss banner
               Consumer<GameState>(
-                builder: (_, state, __) {
-                  if (!state.showGravityWarning) return const SizedBox();
+                builder: (_, s, __) {
+                  if (s.currentLevel?.isBoss != true) return const SizedBox();
                   return Positioned(
-                    top: 80,
-                    left: 0,
-                    right: 0,
+                    top: 0, left: 0, right: 0,
                     child: Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
-                        ),
+                        margin: const EdgeInsets.only(top: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.9),
-                          borderRadius: BorderRadius.circular(30),
+                          gradient: const LinearGradient(
+                            colors: [GameColors.boss, Color(0xFFFF6D00)],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
                           boxShadow: [
-                            BoxShadow(
-                              color: Colors.orange.withOpacity(0.5),
-                              blurRadius: 15,
-                            ),
+                            BoxShadow(color: GameColors.boss.withOpacity(0.5), blurRadius: 12),
                           ],
                         ),
-                        child: const Text(
-                          '🌀 GRAVITY SHIFT INCOMING!',
-                          style: TextStyle(
+                        child: Text(
+                          '👾  BOSS: ${s.currentLevel?.bossName}',
+                          style: const TextStyle(
                             color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
                             letterSpacing: 1,
                           ),
                         ),
                       )
-                          .animate(onPlay: (c) => c.repeat())
-                          .fadeIn(duration: 400.ms)
-                          .then()
-                          .fadeOut(duration: 400.ms),
+                          .animate(onPlay: (c) => c.repeat(reverse: true))
+                          .shimmer(duration: 2000.ms, color: Colors.white30),
                     ),
                   );
                 },
               ),
-              // Full Moon Boost overlay
+              // Full moon boost badge
               Consumer<GameState>(
-                builder: (_, state, __) {
-                  if (!state.fullMoonActive) return const SizedBox();
+                builder: (_, s, __) {
+                  if (!s.fullMoonActive) return const SizedBox();
                   return Positioned(
-                    bottom: 120,
-                    left: 0,
-                    right: 0,
+                    bottom: 110, left: 0, right: 0,
                     child: Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
-                          color: GameColors.fullMoon.withOpacity(0.2),
+                          color: GameColors.fullMoon.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: GameColors.fullMoon.withOpacity(0.5),
-                          ),
+                          border: Border.all(color: GameColors.fullMoon.withOpacity(0.5)),
                         ),
                         child: Text(
-                          '🌕 FULL MOON × ${state.fullMoonMovesLeft}',
+                          '🌕  FULL MOON BOOST  ×${s.fullMoonMovesLeft}',
                           style: const TextStyle(
                             color: GameColors.fullMoon,
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
+                            letterSpacing: 0.5,
                           ),
                         ),
-                      ),
+                      )
+                          .animate(onPlay: (c) => c.repeat(reverse: true))
+                          .scale(begin: const Offset(0.97, 0.97), end: const Offset(1.03, 1.03), duration: 800.ms),
                     ),
                   );
                 },
               ),
-              // Boss label
-              if (_gameState.currentLevel?.isBoss == true)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: GameColors.boss.withOpacity(0.85),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '👾 BOSS: ${_gameState.currentLevel?.bossName}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
+              // Power-up select hint
+              Consumer<GameState>(
+                builder: (_, s, __) {
+                  if (!s.powerUpSelectMode) return const SizedBox();
+                  return Positioned(
+                    bottom: 100, left: 0, right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: GameColors.accent.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: GameColors.accent.withOpacity(0.5)),
                         ),
-                      ),
+                        child: Text(
+                          '${s.activePowerUp?.emoji ?? ''}  Tap a cell to use',
+                          style: const TextStyle(
+                            color: GameColors.accent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      )
+                          .animate()
+                          .fadeIn(duration: 300.ms)
+                          .slideY(begin: 0.3),
                     ),
-                  ),
-                ),
+                  );
+                },
+              ),
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildStarfield() {
+class _PauseSheet extends StatelessWidget {
+  final VoidCallback onResume, onRestart, onQuit;
+  const _PauseSheet({
+    required this.onResume,
+    required this.onRestart,
+    required this.onQuit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40, height: 4,
+            decoration: BoxDecoration(
+              color: GameColors.textHint,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            '⏸  PAUSED',
+            style: TextStyle(
+              color: GameColors.textPrimary,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 3,
+            ),
+          ),
+          const SizedBox(height: 24),
+          _sheetBtn('▶  RESUME', const LinearGradient(colors: [Color(0xFF7C4DFF), Color(0xFF40C4FF)]), onResume),
+          const SizedBox(height: 10),
+          _sheetBtn('🔄  RESTART', const LinearGradient(colors: [Color(0xFF0077B6), Color(0xFF00B4D8)]), onRestart),
+          const SizedBox(height: 10),
+          _sheetBtn('🏠  QUIT', LinearGradient(colors: [Colors.grey.shade800, Colors.grey.shade700]), onQuit),
+        ],
+      ),
+    );
+  }
+
+  Widget _sheetBtn(String label, Gradient gradient, VoidCallback fn) {
+    return GestureDetector(
+      onTap: fn,
+      child: Container(
+        width: double.infinity,
+        height: 50,
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: (gradient as LinearGradient).colors.first.withOpacity(0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              letterSpacing: 1.5,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Starfield extends StatelessWidget {
+  const _Starfield();
+
+  @override
+  Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _StarfieldPainter(),
+      painter: _StarPainter(),
       child: const SizedBox.expand(),
     );
   }
 }
 
-class _PauseDialog extends StatelessWidget {
-  final VoidCallback onResume;
-  final VoidCallback onQuit;
-  final VoidCallback onRestart;
-
-  const _PauseDialog({
-    required this.onResume,
-    required this.onQuit,
-    required this.onRestart,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: GameColors.boardBg,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              '⏸ PAUSED',
-              style: TextStyle(
-                color: GameColors.textPrimary,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 24),
-            _btn('▶ RESUME', GameColors.primary, onResume),
-            const SizedBox(height: 10),
-            _btn('🔄 RESTART', GameColors.accent, onRestart),
-            const SizedBox(height: 10),
-            _btn('🏠 QUIT', Colors.grey.shade700, onQuit),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _btn(String label, Color color, VoidCallback fn) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: fn,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-        ),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-      ),
-    );
-  }
-}
-
-class _StarfieldPainter extends CustomPainter {
+class _StarPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withOpacity(0.4);
+    final paint = Paint()..color = Colors.white.withOpacity(0.3);
     const stars = [
       [0.05, 0.1], [0.15, 0.25], [0.9, 0.05], [0.85, 0.3],
-      [0.5, 0.08], [0.7, 0.15], [0.3, 0.02], [0.95, 0.5],
-      [0.02, 0.6], [0.1, 0.85], [0.88, 0.75], [0.45, 0.95],
-      [0.6, 0.55], [0.2, 0.45], [0.78, 0.9], [0.35, 0.7],
+      [0.5, 0.08], [0.7, 0.15],  [0.3, 0.02], [0.95, 0.5],
+      [0.02, 0.6], [0.1, 0.85],  [0.88, 0.75],[0.45, 0.95],
+      [0.6, 0.55], [0.2, 0.45],  [0.78, 0.9], [0.35, 0.7],
     ];
     for (final s in stars) {
       canvas.drawCircle(
-        Offset(size.width * s[0], size.height * s[1]),
-        1.2,
-        paint,
+        Offset(size.width * s[0], size.height * s[1]), 1.5, paint,
       );
     }
   }
-
-  @override
-  bool shouldRepaint(_) => false;
+  @override bool shouldRepaint(_) => false;
 }
