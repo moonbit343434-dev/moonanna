@@ -1,6 +1,8 @@
 import '../models/game_state.dart';
 import '../models/level_config.dart';
 import '../models/player_progress.dart';
+import '../models/element_type.dart';
+import '../models/cell.dart';
 import '../core/constants.dart';
 import 'board_engine.dart';
 
@@ -228,7 +230,7 @@ class LevelManager {
   void useMoonHammer(GameState state, int row, int col) {
     if ((state.powerUps[PowerUpType.moonHammer] ?? 0) <= 0) return;
     if (!state.board[row][col].isPlayable) return;
-    state.board[row][col].type = ElementType.empty;
+    state.board[row][col] = Cell(type: ElementType.empty);
     _engine.applyGravity(state.board, state.currentGravity);
     _engine.fillBoard(state.board, state.currentLevel!.availableElements);
     state.powerUps[PowerUpType.moonHammer] =
