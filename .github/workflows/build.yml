@@ -27,6 +27,46 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Generate launcher icons
+        run: |
+          mkdir -p android/app/src/main/res/mipmap-mdpi
+          mkdir -p android/app/src/main/res/mipmap-hdpi
+          mkdir -p android/app/src/main/res/mipmap-xhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+          python3 -c "
+          import struct, zlib
+
+          def create_png(size, r, g, b):
+              def chunk(name, data):
+                  c = zlib.crc32(name + data) & 0xffffffff
+                  return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)
+              sig = b'\x89PNG\r\n\x1a\n'
+              ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0))
+              raw = b''
+              for y in range(size):
+                  raw += b'\x00'
+                  for x in range(size):
+                      cx, cy = x - size//2, y - size//2
+                      dist = (cx*cx + cy*cy) ** 0.5
+                      if dist < size * 0.42:
+                          raw += bytes([r, g, b])
+                      else:
+                          raw += bytes([13, 13, 26])
+              idat = chunk(b'IDAT', zlib.compress(raw))
+              iend = chunk(b'IEND', b'')
+              return sig + ihdr + idat + iend
+
+          sizes = {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}
+          for density, size in sizes.items():
+              data = create_png(size, 108, 61, 200)
+              with open(f'android/app/src/main/res/mipmap-{density}/ic_launcher.png', 'wb') as f:
+                  f.write(data)
+              with open(f'android/app/src/main/res/mipmap-{density}/ic_launcher_round.png', 'wb') as f:
+                  f.write(data)
+          print('Icons created!')
+          "
+
       - name: Get dependencies
         run: flutter pub get
 
